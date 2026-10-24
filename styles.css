@@ -1,0 +1,30 @@
+:root{--bg:#0b0f17;--alt:#111827;--card:#161f30;--bd:rgba(148,163,184,.16);--tx:#f8fafc;--tx2:#cbd5e1;--mu:#94a3b8;--amber:#f59e0b;--cyan:#38bdf8;--em:#10b981;--red:#f87171;--sans:'Inter',system-ui,sans-serif;--mono:'JetBrains Mono',ui-monospace,monospace}
+*{box-sizing:border-box;margin:0;padding:0}body{background:var(--bg);color:var(--tx);font-family:var(--sans);min-height:100vh;display:flex;flex-direction:column}
+a{color:var(--cyan);text-decoration:none}
+.top{display:flex;align-items:center;gap:20px;padding:12px 24px;border-bottom:1px solid var(--bd);background:rgba(11,15,23,.9);position:sticky;top:0;z-index:10;flex-wrap:wrap}
+.brand{display:flex;gap:10px;align-items:center}.logo{width:38px;height:38px;border-radius:10px;background:linear-gradient(135deg,var(--amber),var(--cyan));display:grid;place-items:center;font-weight:800;color:#0b0f17;font-family:var(--mono)}
+.bn{font-weight:700}.bs{font-size:12px;color:var(--mu)}
+.tabs{display:flex;gap:6px;flex:1;flex-wrap:wrap}.tab{background:transparent;border:1px solid var(--bd);color:var(--tx2);padding:8px 14px;border-radius:999px;cursor:pointer;font:500 14px var(--sans)}
+.tab.active,.tab:hover{background:var(--card);color:var(--tx);border-color:var(--amber)}
+.gh{font-size:14px;border:1px solid var(--bd);padding:7px 12px;border-radius:8px}
+main{flex:1;padding:20px 24px}.panel{display:none}.panel.active{display:block}
+.toolbar{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:12px}.lbl{color:var(--mu);font-size:13px}.sep{flex:0 0 12px}
+.tool,.btn{background:var(--card);border:1px solid var(--bd);color:var(--tx2);padding:7px 12px;border-radius:8px;cursor:pointer;font:500 13px var(--sans)}
+.tool.active{border-color:var(--amber);color:var(--amber)}.btn{border-color:rgba(56,189,248,.4);color:var(--cyan)}.btn:hover{background:#1c273c}.btn.ghost{color:var(--mu);border-color:var(--bd)}.btn.sm{padding:3px 8px;font-size:12px;margin-left:8px}
+.split{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(300px,1fr);gap:16px}@media(max-width:1000px){.split{grid-template-columns:1fr}}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:14px;padding:16px;box-shadow:0 12px 32px -8px rgba(0,0,0,.45)}
+h3{font-size:15px;margin:4px 0 10px;color:var(--amber);letter-spacing:.02em}.card h3:not(:first-child){margin-top:18px}
+.mono{font-family:var(--mono);font-size:13px;color:var(--tx2);line-height:1.6}.small{font-size:12.5px;color:var(--mu);line-height:1.6}ol.small{padding-left:18px}
+.hint{font-size:12px;color:var(--mu);margin-top:8px}
+svg#svg{background:#0e1422;border-radius:10px;cursor:crosshair;display:block}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px}label{font-size:13px;color:var(--tx2);display:flex;gap:6px;align-items:center}
+select,input[type=number],input[type=text]{background:var(--alt);color:var(--tx);border:1px solid var(--bd);border-radius:6px;padding:5px 7px;font:13px var(--sans)}
+.sliders label{min-width:200px}.sliders input[type=range]{flex:1;accent-color:var(--amber)}.sliders b{font-family:var(--mono);color:var(--amber);min-width:40px}
+#armCtl{display:flex;flex-direction:column;gap:6px;margin-bottom:8px}
+.tbl{width:100%;border-collapse:collapse;font-size:12.5px;margin:6px 0}.tbl th{color:var(--mu);text-align:left;font-weight:600;border-bottom:1px solid var(--bd);padding:5px}.tbl td{padding:4px 5px;border-bottom:1px solid rgba(148,163,184,.07)}
+.tbl input,.tbl select{width:100%;padding:3px 5px}.x{background:none;border:none;color:var(--red);cursor:pointer}
+.warn{color:var(--amber);font-size:12.5px;margin:6px 0}.ok{color:var(--em)}.bad{color:var(--red)}
+.code{background:#0e1422;border:1px solid var(--bd);border-radius:8px;padding:10px;font:12px/1.5 var(--mono);color:#a5f3fc;max-height:300px;overflow:auto;white-space:pre}
+canvas#pidPlot{width:100%;background:#0e1422;border-radius:10px}
+.bar{height:14px;background:var(--alt);border-radius:7px;overflow:hidden;margin:10px 0}#fillBar{height:100%;width:0;background:var(--em);transition:.3s}
+footer{text-align:center;color:var(--mu);font-size:12.5px;padding:16px;border-top:1px solid var(--bd)}

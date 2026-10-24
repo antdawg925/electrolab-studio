@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ElectroLab Studio | Anthony Early</title>
+<meta name="description" content="ElectroLab Studio: browser-based EE workbench. Schematic + KCL nodal solver, Arduino/ESP32 pinout & PID simulator, NEC panel schedule & conduit fill, 3D mechatronics viewer.">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}</script>
+</head><body>
+<header class="top"><div class="brand"><div class="logo">EL</div><div><div class="bn">ElectroLab Studio</div><div class="bs">by <a href="https://anthony-early.vercel.app" target="_blank">Anthony Early</a> &bull; EE @ ASU</div></div></div>
+<nav class="tabs">
+<button class="tab active" data-tab="sch">⚡ Schematic &amp; KCL</button>
+<button class="tab" data-tab="ard">🤖 Arduino &amp; PID</button>
+<button class="tab" data-tab="nec">🔌 Panel &amp; Conduit</button>
+<button class="tab" data-tab="cad">🧊 3D Mechatronics</button></nav>
+<a class="gh" href="https://github.com/antdawg925/electrolab-studio" target="_blank">GitHub ↗</a></header>
+<main>
+<!-- SCHEMATIC -->
+<section id="sch" class="panel active">
+<div class="toolbar">
+<span class="lbl">Place:</span>
+<button class="tool active" data-t="R">Resistor</button><button class="tool" data-t="V">DC Voltage</button><button class="tool" data-t="I">DC Current</button><button class="tool" data-t="W">Wire</button><button class="tool" data-t="G">Ground</button><button class="tool" data-t="O">Op-Amp</button><button class="tool" data-t="X">Delete</button>
+<span class="sep"></span>
+<button id="exInv" class="btn">Example: Inverting Amp</button><button id="exDiv" class="btn">Example: Divider + KCL</button><button id="clr" class="btn ghost">Clear</button>
+</div>
+<div class="split"><div class="card canvas-wrap"><svg id="svg" width="100%" height="520"></svg>
+<p class="hint">Two-terminal parts: click start grid point, then end point (arrow/+ points toward end). Op-amp/Ground: single click. Click a part's label to edit its value. Solver re-runs automatically.</p></div>
+<div class="card side"><h3>Nodal Solution (MNA)</h3><div id="solOut" class="mono"></div>
+<h3>KCL Recipe</h3><ol class="small"><li>Pick ground (0 V), label node voltages.</li><li>Each branch: i = (V<sub>start</sub> − V<sub>end</sub>)/R.</li><li>At each node: Σ i<sub>leaving</sub> = 0.</li><li>Ideal op-amp: V<sub>+</sub> = V<sub>−</sub>, no input current.</li></ol></div></div>
+</section>
+<!-- ARDUINO -->
+<section id="ard" class="panel">
+<div class="split"><div class="card"><h3>Pinout Planner</h3>
+<div class="row"><label>Board <select id="board"><option value="uno">Arduino Uno (ATmega328P)</option><option value="esp32">ESP32 DevKit V1</option></select></label></div>
+<div class="row"><label>Device <select id="dev"></select></label><label>Pin <select id="pin"></select></label><button id="addPin" class="btn">Assign</button></div>
+<table class="tbl" id="pinTbl"><thead><tr><th>Device</th><th>Pin</th><th>Capabilities</th><th></th></tr></thead><tbody></tbody></table>
+<div id="pinWarn" class="warn"></div>
+<h3>PID Motor Position Loop</h3>
+<div class="row sliders"><label>Kp <input type="range" id="kp" min="0" max="20" step="0.1" value="4"><b id="kpv"></b></label>
+<label>Ki <input type="range" id="ki" min="0" max="10" step="0.05" value="1"><b id="kiv"></b></label>
+<label>Kd <input type="range" id="kd" min="0" max="3" step="0.01" value="0.3"><b id="kdv"></b></label>
+<label>Setpoint <input type="range" id="sp" min="10" max="180" step="1" value="90"><b id="spv"></b></label></div>
+<p class="small">Plant: DC motor 1/(s(τs+1)), τ = 0.25 s, output clamped to ±255 PWM (with anti-windup), dt = 10 ms.</p>
+</div>
+<div class="card side wide"><canvas id="pidPlot" width="640" height="300"></canvas><div id="pidStats" class="mono small"></div>
+<h3>Generated Sketch <button id="dlIno" class="btn sm">Download .ino</button></h3><pre id="ino" class="code"></pre></div></div>
+</section>
+<!-- NEC -->
+<section id="nec" class="panel">
+<div class="split"><div class="card"><h3>Panel Schedule <span class="small">(120/240 V 1Φ, NEC 220 style)</span></h3>
+<div class="row"><label>Main (A) <input id="mainA" type="number" value="200" style="width:80px"></label><button id="addCkt" class="btn">+ Circuit</button><button id="exPanel" class="btn ghost">Load Example House</button></div>
+<table class="tbl" id="cktTbl"><thead><tr><th>#</th><th>Load</th><th>VA</th><th>Poles</th><th>Type</th><th>Breaker</th><th>Wire (Cu)</th><th>Phase</th><th></th></tr></thead><tbody></tbody></table>
+<div id="panelSum" class="mono"></div></div>
+<div class="card side"><h3>Conduit Fill (Ch. 9, Table 1/4/5)</h3>
+<div class="row"><label>Conduit <select id="cType"><option>EMT</option><option>PVC-40</option></select></label><label>Size <select id="cSize"></select></label></div>
+<div class="row"><label>Wire <select id="wSize"></select></label><label>Qty <input id="wQty" type="number" value="3" style="width:60px"></label><button id="addW" class="btn">Add THHN</button></div>
+<table class="tbl" id="wTbl"><thead><tr><th>THHN</th><th>Qty</th><th>Area in²</th><th></th></tr></thead><tbody></tbody></table>
+<div class="bar"><div id="fillBar"></div></div><div id="fillOut" class="mono"></div>
+<p class="small">Limits: 1 wire 53%, 2 wires 31%, 3+ wires 40%. Educational tool; verify against the adopted NEC edition &amp; AHJ.</p></div></div>
+</section>
+<!-- CAD -->
+<section id="cad" class="panel">
+<div class="split"><div class="card canvas-wrap"><div id="three" style="height:540px"></div></div>
+<div class="card side"><h3>Model</h3><div class="row"><select id="model"><option value="rover">2WD Rover (Arduino)</option><option value="arm">3-DOF Robot Arm</option><option value="box">Control Enclosure</option></select></div>
+<div id="armCtl" class="sliders"><label>Base <input type="range" id="j0" min="-180" max="180" value="20"></label><label>Shoulder <input type="range" id="j1" min="-80" max="80" value="25"></label><label>Elbow <input type="range" id="j2" min="-120" max="120" value="-45"></label></div>
+<label class="small"><input type="checkbox" id="spin" checked> Animate</label> <label class="small"><input type="checkbox" id="wire"> Wireframe</label>
+<h3>Bill of Materials</h3><table class="tbl" id="bom"><tbody></tbody></table><p class="small">Drag to orbit · scroll to zoom · right-drag to pan.</p></div></div>
+</section>
+</main>
+<footer>ElectroLab Studio &copy; 2026 Anthony Early · <a href="https://anthony-early.vercel.app">Portfolio</a> · <a href="https://github.com/antdawg925/electrolab-studio">Source</a></footer>
+<script src="app.js"></script>
+<script type="module" src="cad.js"></script>
+</body></html>
