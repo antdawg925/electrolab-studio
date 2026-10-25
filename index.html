@@ -19,12 +19,12 @@
 <section id="sch" class="panel active">
 <div class="toolbar">
 <span class="lbl">Place:</span>
-<button class="tool active" data-t="R">Resistor</button><button class="tool" data-t="V">DC Voltage</button><button class="tool" data-t="I">DC Current</button><button class="tool" data-t="W">Wire</button><button class="tool" data-t="G">Ground</button><button class="tool" data-t="O">Op-Amp</button><button class="tool" data-t="X">Delete</button>
+<button class="tool active" data-t="R" title="Resistor (R)">Resistor</button><button class="tool" data-t="V" title="DC voltage source: + at the end point (V)">DC Voltage</button><button class="tool" data-t="I" title="DC current source: arrow from start to end point (I)">DC Current</button><button class="tool" data-t="W" title="Wire (W): also joins any part ends lying on it">Wire</button><button class="tool" data-t="G" title="Ground / 0 V reference (G)">Ground</button><button class="tool" data-t="O" title="Ideal op-amp, single click; − input top, + bottom (O)">Op-Amp</button><button class="tool" data-t="M" title="Move: drag a part to a new spot (M)">Move</button><button class="tool" data-t="X" title="Delete tool: click a part (X / Del). Right-click any part also deletes">Delete</button>
 <span class="sep"></span>
-<button id="exInv" class="btn">Example: Inverting Amp</button><button id="exDiv" class="btn">Example: Divider + KCL</button><button id="clr" class="btn ghost">Clear</button>
+<button id="exInv" class="btn">Example: Inverting Amp</button><button id="exDiv" class="btn">Example: Divider + KCL</button><button id="undo" class="btn ghost" title="Undo (Ctrl+Z)">↶ Undo</button><button id="clr" class="btn ghost" title="Remove all parts (undoable)">Clear</button>
 </div>
 <div class="split"><div class="card canvas-wrap"><svg id="svg" width="100%" height="520"></svg>
-<p class="hint">Two-terminal parts: click start grid point, then end point (arrow/+ points toward end). Op-amp/Ground: single click. Click a part's label to edit its value. Solver re-runs automatically.</p></div>
+<p class="hint"><b>How to use:</b> pick a part, click a start grid dot then an end dot (V source: + goes at the end; I source arrow points to the end). Ground &amp; op-amp: single click. Click a value label to edit it (4.7k, 2m OK). Wires connect at their ends and to any part end lying on them. Drag with <b>Move</b>, delete with right-click or <b>Delete</b>. Keys: R V I W G O M X, Esc cancels, Ctrl+Z undoes. Solves automatically.</p></div>
 <div class="card side"><h3>Nodal Solution (MNA)</h3><div id="solOut" class="mono"></div>
 <h3>KCL Recipe</h3><ol class="small"><li>Pick ground (0 V), label node voltages.</li><li>Each branch: i = (V<sub>start</sub> − V<sub>end</sub>)/R.</li><li>At each node: Σ i<sub>leaving</sub> = 0.</li><li>Ideal op-amp: V<sub>+</sub> = V<sub>−</sub>, no input current.</li></ol></div></div>
 </section>

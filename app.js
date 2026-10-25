@@ -4,6 +4,10 @@ const $=id=>document.getElementById(id);
 const fmt=(v,u)=>{const a=Math.abs(v);if(a===0)return '0 '+u;if(a<1e-3)return (v*1e6).toFixed(2)+' µ'+u;if(a<1)return (v*1e3).toFixed(3)+' m'+u;if(a>=1e3)return (v/1e3).toFixed(3)+' k'+u;return v.toFixed(3)+' '+u;};
 
 /* ================= 1. SCHEMATIC + MNA ================= */
+const SI={p:1e-12,n:1e-9,u:1e-6,'µ':1e-6,m:1e-3,k:1e3,K:1e3,M:1e6,meg:1e6};
+function parseSI(t){const m=String(t).trim().replace(/\s|Ω|ohms?|[VvAa]$/g,'').match(/^(-?\d*\.?\d+(?:e-?\d+)?)(meg|[pnuµmkKM])?$/);return m?parseFloat(m[1])*(m[2]?SI[m[2]]:1):NaN;}
+let hist=[];const snap=()=>{hist.push(JSON.stringify(parts));if(hist.length>100)hist.shift();};
+function undo(){if(hist.length){parts=JSON.parse(hist.pop());pending=null;draw();}}
 const G=25,svg=$('svg'),NS='http://www.w3.org/2000/svg';
 let parts=[],tool='R',pending=null,uid=1;
 document.querySelectorAll('.tool').forEach(b=>b.onclick=()=>{document.querySelectorAll('.tool').forEach(x=>x.classList.remove('active'));b.classList.add('active');tool=b.dataset.t;pending=null;draw();});
@@ -14,7 +18,8 @@ function solve(){
   // union-find nodes
   const par={};const f=k=>{if(!(k in par))par[k]=k;while(par[k]!==k){par[k]=par[par[k]];k=par[k];}return k;};const u=(a,b)=>{par[f(a)]=f(b);};
   parts.forEach(p=>terms(p).forEach(t=>f(key(t))));
-  parts.filter(p=>p.t==='W').forEach(p=>u(key(p.a),key(p.b)));
+  const pts=[];parts.forEach(p=>terms(p).forEach(t=>pts.push(t)));
+  parts.filter(p=>p.t==='W').forEach(p=>{u(key(p.a),key(p.b));const [ax,ay]=p.a,[bx,by]=p.b;pts.forEach(t=>{const cr=(bx-ax)*(t[1]-ay)-(by-ay)*(t[0]-ax);if(cr===0&&t[0]>=Math.min(ax,bx)&&t[0]<=Math.max(ax,bx)&&t[1]>=Math.min(ay,by)&&t[1]<=Math.max(ay,by))u(key(t),key(p.a));});});
   const gnd=parts.filter(p=>p.t==='G');if(!gnd.length)return {err:'Add a Ground symbol to set the 0 V reference.'};
   gnd.forEach(g=>u(key([g.x,g.y]),'GND'));f('GND');
   const roots=[...new Set(Object.keys(par).map(f))].filter(r=>r!==f('GND'));
@@ -27,14 +32,19 @@ function solve(){
     if(p.t==='I'){const a=ni(p.a),b=ni(p.b);/* current flows a->b through source, i.e. leaves node a into source, enters b */ if(a>=0)z[a]-=p.v;if(b>=0)z[b]+=p.v;}});
   vs.forEach((p,k)=>{const r=n+k;if(p.t==='V'){const a=ni(p.a),b=ni(p.b);/* b is + terminal */ if(b>=0){A[b][r]+=1;A[r][b]+=1;}if(a>=0){A[a][r]-=1;A[r][a]-=1;}z[r]=p.v;}
     else{const [m,pl,o]=terms(p).map(ni);if(o>=0)A[o][r]+=1;if(pl>=0)A[r][pl]+=1;if(m>=0)A[r][m]-=1;z[r]=0;}});
+  for(const p of parts)if(p.t==='V'&&ni(p.a)===ni(p.b))return {err:`Voltage source (${p.v} V) is shorted: both terminals are on the same node. Remove the wire across it.`};
+  for(let i=0;i<n;i++)A[i][i]+=1e-12; // gmin: lets floating parts solve instead of crashing
   // gaussian elimination
   const M=A.map((row,i)=>[...row,z[i]]);
-  for(let c=0;c<N;c++){let pv=c;for(let r=c+1;r<N;r++)if(Math.abs(M[r][c])>Math.abs(M[pv][c]))pv=r;if(Math.abs(M[pv][c])<1e-12)return {err:'Singular circuit: check for floating nodes, open op-amp outputs, or voltage-source loops.'};[M[c],M[pv]]=[M[pv],M[c]];
+  for(let c=0;c<N;c++){let pv=c;for(let r=c+1;r<N;r++)if(Math.abs(M[r][c])>Math.abs(M[pv][c]))pv=r;if(Math.abs(M[pv][c])<1e-12)return {err:parts.some(p=>p.t==='O')?'Cannot solve: each op-amp needs negative feedback (a path from its output back to the − input) and its inputs wired into the circuit. Also check for two sources forcing the same node.':'Cannot solve: two voltage sources fight over the same node (parallel sources or a source loop).'};[M[c],M[pv]]=[M[pv],M[c]];
     for(let r=0;r<N;r++)if(r!==c){const k=M[r][c]/M[c][c];if(k)for(let j=c;j<=N;j++)M[r][j]-=k*M[c][j];}}
   const x=M.map((r,i)=>r[N]/r[i]);
+  const adj={};const link=(a,b)=>{(adj[a]=adj[a]||[]).push(b);(adj[b]=adj[b]||[]).push(a);};parts.forEach(p=>{const ts=terms(p).map(t=>f(key(t)));for(let k=1;k<ts.length;k++)link(ts[0],ts[k]);});
+  const reach=new Set([f('GND')]),st=[f('GND')];while(st.length){const c=st.pop();(adj[c]||[]).forEach(d=>{if(!reach.has(d)){reach.add(d);st.push(d);}});}
+  const floating=roots.filter(r=>!reach.has(r));
   const V=t=>{const i=ni(t);return i<0?0:x[i];};
   const names={};roots.forEach((r,i)=>names[r]='N'+(i+1));names[f('GND')]='GND';
-  return {V,x,n,vs,nodeName:t=>names[f(key(t))],roots,idx,f};
+  return {floating,V,x,n,vs,nodeName:t=>names[f(key(t))],roots,idx,f};
 }
 function draw(){
   svg.innerHTML='';const w=svg.clientWidth||900,h=520;
@@ -52,33 +62,46 @@ function draw(){
         if(p.t==='R'){let d=`M${-bl},0`;const seg=bl*2/6;for(let k=0;k<6;k++)d+=` L${-bl+seg*(k+.5)},${k%2?6:-6}`;d+=` L${bl},0`;el('path',{d,fill:'none',stroke:col,'stroke-width':2},b);}
         else{el('circle',{cx:0,cy:0,r:bl,fill:'#0e1422',stroke:col,'stroke-width':2},b);if(p.t==='V'){const t=el('text',{x:bl-11,y:4,fill:col,'font-size':12,transform:''},b);t.textContent='+';const t2=el('text',{x:-bl+4,y:4,fill:col,'font-size':12},b);t2.textContent='−';}else el('path',{d:`M-9,0 L7,0 M2,-5 L8,0 L2,5`,stroke:col,fill:'none','stroke-width':2},b);}
         const lab=el('text',{x:mx-uy*24,y:my+ux*24+4,fill:'#f8fafc','font-size':12,'text-anchor':'middle',style:'cursor:pointer;font-family:JetBrains Mono'},g);
-        lab.textContent=p.t==='R'?fmt(p.v,'Ω').replace(' ',''):p.t==='V'?p.v+'V':p.v*1e3+'mA';
-        lab.onclick=e=>{e.stopPropagation();const nv=prompt('Value ('+(p.t==='R'?'Ω':p.t==='V'?'V':'A')+'):',p.v);if(nv!==null&&!isNaN(parseFloat(nv))&&(p.t!=='R'||parseFloat(nv)>0)){p.v=parseFloat(nv);draw();}};
+        lab.textContent=p.t==='R'?fmt(p.v,'Ω').replace(' ',''):p.t==='V'?(+p.v.toPrecision(6))+' V':fmt(p.v,'A');const tt=el('title',{},lab);tt.textContent='Click to edit value';
+        lab.onclick=e=>{e.stopPropagation();if(tool==='X'||tool==='M')return;const u=p.t==='R'?'Ω':p.t==='V'?'V':'A';const nv=prompt(`New value in ${u} (SI suffixes OK: 4.7k, 2m, 1meg):`,p.v);if(nv===null)return;const v=parseSI(nv);if(isNaN(v)||(p.t==='R'&&v<=0)){alert(p.t==='R'?'Resistance must be a positive number, e.g. 1k or 470.':'Enter a number, e.g. 5 or 2m.');return;}snap();p.v=v;draw();};
         // current arrow
         if(!s.err){let i=null;if(p.t==='R')i=(s.V(p.a)-s.V(p.b))/p.v;if(p.t==='I')i=p.v;
           if(i!==null&&Math.abs(i)>1e-12){const d=i>0?1:-1,ax=mx+uy*14,ay=my-ux*14;el('path',{d:`M${ax-ux*d*10},${ay-uy*d*10} L${ax+ux*d*10},${ay+uy*d*10}`,stroke:'#f87171','stroke-width':2,'marker-end':'url(#arr)'},g);
             const ti=el('text',{x:mx+uy*30,y:my-ux*30+4,fill:'#f87171','font-size':11,'text-anchor':'middle','font-family':'JetBrains Mono'},g);ti.textContent=fmt(Math.abs(i),'A');}}}}
-    g.style.cursor=tool==='X'?'pointer':'';g.onclick=e=>{if(tool==='X'){e.stopPropagation();parts=parts.filter(q=>q!==p);draw();}};});
+    g.style.cursor=tool==='X'?'not-allowed':tool==='M'?'move':'';g.onclick=e=>{if(tool==='X'){e.stopPropagation();snap();parts=parts.filter(q=>q!==p);draw();}};
+    g.oncontextmenu=e=>{e.preventDefault();snap();parts=parts.filter(q=>q!==p);draw();};
+    g.onpointerdown=e=>{if(tool!=='M')return;e.stopPropagation();e.preventDefault();snap();drag={p,x0:e.clientX,y0:e.clientY,orig:JSON.stringify(p)};};
+    // fat invisible hit area
+    if(p.a)el('line',{x1:p.a[0]*G,y1:p.a[1]*G,x2:p.b[0]*G,y2:p.b[1]*G,stroke:'transparent','stroke-width':14},g);});
   const defs=el('defs',{});const mk=el('marker',{id:'arr',markerWidth:8,markerHeight:8,refX:6,refY:4,orient:'auto'},defs);el('path',{d:'M0,0 L8,4 L0,8 Z',fill:'#f87171'},mk);
   // node labels
   const out=$('solOut');
-  if(s.err){out.innerHTML='<span class="warn">'+s.err+'</span>';}
+  if(!parts.length){out.innerHTML='<span class="small">Empty canvas. Load an example above, or pick a part (shortcut keys R V I W G O) and click two grid points to place it. Add a Ground, then results appear here.</span>';}
+  else if(s.err){out.innerHTML='<span class="warn">'+s.err+'</span>';}
   else{const seen={};parts.forEach(p=>terms(p).forEach(t=>{const nm=s.nodeName(t);if(nm==='GND'||seen[nm])return;seen[nm]=1;const tx=el('text',{x:t[0]*G+5,y:t[1]*G-6,fill:'#38bdf8','font-size':11,'font-family':'JetBrains Mono'});tx.textContent=nm+'='+s.V(t).toFixed(3)+'V';}));
     let h='<b>Node voltages</b><br>';Object.keys(seen).sort((a,b)=>+a.slice(1)-+b.slice(1)).forEach(nm=>{const r=s.roots[+nm.slice(1)-1];h+=nm+' = '+s.x[s.idx[r]].toFixed(4)+' V<br>';});
     h+='<br><b>Branch currents</b> (direction shown by red arrows)<br>';let ri=1,vi=0;
     parts.forEach(p=>{if(p.t==='R'){const i=(s.V(p.a)-s.V(p.b))/p.v;const A=s.nodeName(p.a),B=s.nodeName(p.b);h+=`R${ri++} ${fmt(p.v,'Ω')}: ${fmt(Math.abs(i),'A')} ${i>=0?A+'→'+B:B+'→'+A}<br>`;}});
     s.vs.forEach((p,k)=>{const i=s.x[s.n+k];h+=(p.t==='V'?`V source ${p.v} V `:'Op-amp output ')+(-i>=0?'sources ':'sinks ')+fmt(Math.abs(i),'A')+'<br>';});
+    if(s.floating.length)h='<div class="warn">⚠ '+s.floating.length+' node(s) not connected to ground; parts there are floating (shown as ~0 V, no current). Wire them into the circuit.</div>'+h;
     out.innerHTML=h;}
   if(pending){el('circle',{cx:pending[0]*G,cy:pending[1]*G,r:5,fill:'#f59e0b'});}
 }
 svg.onclick=e=>{const r=svg.getBoundingClientRect();const p=[Math.round((e.clientX-r.left)/G),Math.round((e.clientY-r.top)/G)];
-  if(tool==='X')return;if(tool==='G'){parts.push({t:'G',x:p[0],y:p[1]});draw();return;}if(tool==='O'){parts.push({t:'O',x:p[0],y:p[1]});draw();return;}
-  if(!pending){pending=p;draw();return;}if(key(pending)===key(p)){pending=null;draw();return;}
+  if(tool==='X'||tool==='M'||justDragged){justDragged=false;return;}snap();if(tool==='G'){parts.push({t:'G',x:p[0],y:p[1]});draw();return;}if(tool==='O'){parts.push({t:'O',x:p[0],y:p[1]});draw();return;}
+  if(!pending){hist.pop();pending=p;draw();return;}if(key(pending)===key(p)){hist.pop();pending=null;draw();return;}
   parts.push({t:tool,a:pending,b:p,v:tool==='R'?1000:tool==='V'?5:0.001});pending=null;draw();};
 function exInv(){parts=[{t:'V',a:[4,10],b:[4,6],v:2},{t:'G',x:4,y:10},{t:'R',a:[4,6],b:[10,6],v:1000},{t:'W',a:[10,6],b:[12,6]},{t:'W',a:[10,6],b:[10,3]},{t:'R',a:[10,3],b:[18,3],v:4700},{t:'W',a:[18,3],b:[18,7]},
   {t:'O',x:14,y:7},{t:'W',a:[12,8],b:[12,10]},{t:'G',x:12,y:10},{t:'W',a:[16,7],b:[18,7]},{t:'W',a:[18,7],b:[22,7]},{t:'R',a:[22,7],b:[22,11],v:10000},{t:'G',x:22,y:11}];draw();}
 function exDiv(){parts=[{t:'V',a:[4,12],b:[4,4],v:12},{t:'G',x:4,y:12},{t:'R',a:[4,4],b:[12,4],v:2000},{t:'R',a:[12,4],b:[12,12],v:3000},{t:'R',a:[12,4],b:[20,4],v:1000},{t:'R',a:[20,4],b:[20,12],v:2000},{t:'I',a:[28,12],b:[28,4],v:0.002},{t:'W',a:[20,4],b:[28,4]},{t:'W',a:[4,12],b:[12,12]},{t:'W',a:[12,12],b:[20,12]},{t:'W',a:[20,12],b:[28,12]}];draw();}
-$('exInv').onclick=exInv;$('exDiv').onclick=exDiv;$('clr').onclick=()=>{parts=[];draw();};window.addEventListener('resize',()=>{if($('sch').classList.contains('active'))draw();});
+$('exInv').onclick=()=>{snap();exInv();};$('exDiv').onclick=()=>{snap();exDiv();};$('clr').onclick=()=>{if(parts.length){snap();parts=[];pending=null;draw();}};$('undo').onclick=undo;
+let drag=null,justDragged=false;
+window.addEventListener('pointermove',e=>{if(!drag)return;const dx=Math.round((e.clientX-drag.x0)/G),dy=Math.round((e.clientY-drag.y0)/G);const o=JSON.parse(drag.orig),p=drag.p;if(o.a){p.a=[o.a[0]+dx,o.a[1]+dy];p.b=[o.b[0]+dx,o.b[1]+dy];}else{p.x=o.x+dx;p.y=o.y+dy;}draw();});
+window.addEventListener('pointerup',()=>{if(drag){if(drag.orig===JSON.stringify(drag.p))hist.pop();drag=null;justDragged=true;setTimeout(()=>justDragged=false,0);}});
+function setTool(t){document.querySelectorAll('.tool').forEach(x=>x.classList.toggle('active',x.dataset.t===t));tool=t;pending=null;draw();}
+document.addEventListener('keydown',e=>{if(!$('sch').classList.contains('active')||/INPUT|SELECT|TEXTAREA/.test(e.target.tagName))return;const k=e.key;
+  if((e.ctrlKey||e.metaKey)&&k.toLowerCase()==='z'){e.preventDefault();undo();return;}if(e.ctrlKey||e.metaKey||e.altKey)return;
+  const m={r:'R',v:'V',i:'I',w:'W',g:'G',o:'O',m:'M',x:'X',delete:'X',backspace:'X'}[k.toLowerCase()];if(m){e.preventDefault();setTool(m);}if(k==='Escape'){pending=null;draw();}});window.addEventListener('resize',()=>{if($('sch').classList.contains('active'))draw();});
 exInv();
 
 /* ================= 2. ARDUINO / ESP32 + PID ================= */
@@ -179,13 +202,13 @@ let ckts=[];
 function exPanel(){ckts=[['Kitchen SABC #1',1500,1,'Cont? no'],['Kitchen SABC #2',1500,1,'no'],['Bedroom lighting/recep',1200,1,'cont'],['Living room recep',1440,1,'no'],['Bathroom GFCI',1500,1,'no'],['Laundry',1500,1,'no'],['Dishwasher',1200,1,'no'],['Microwave',1500,1,'no'],['Range',8000,2,'no'],['Electric dryer',5000,2,'no'],['Water heater',4500,2,'cont'],['Heat pump / AC',5760,2,'cont'],['EV charger (Level 2)',7680,2,'cont']].map(c=>({name:c[0],va:c[1],poles:c[2],cont:c[3]==='cont'}));renderPanel();}
 function renderPanel(){let A=0,B=0,tot=0,slot=1;
  const rows=ckts.map((c,i)=>{const V=c.poles===2?240:120;let amps=c.va/V*(c.cont?1.25:1);const brk=STD.find(s=>s>=amps)||'>150';const wire=WIRE[brk]||'Calc.';
-  let ph;if(c.poles===2){A+=c.va/2;B+=c.va/2;ph='A+B';}else{if(A<=B){A+=c.va;ph='A';}else{B+=c.va;ph='B';}}tot+=c.va;const sl=c.poles===2?`${slot},${slot+2}`:slot;slot+=c.poles===2?4:2;if(slot>40)slot=2;
-  return `<tr><td class="mono">${sl}</td><td><input data-i="${i}" data-k="name" value="${c.name}"></td><td><input type="number" data-i="${i}" data-k="va" value="${c.va}" style="width:70px"></td><td><select data-i="${i}" data-k="poles"><option ${c.poles==1?'selected':''}>1</option><option ${c.poles==2?'selected':''}>2</option></select></td><td><select data-i="${i}" data-k="cont"><option value="0">Non-cont.</option><option value="1" ${c.cont?'selected':''}>Cont. 125%</option></select></td><td class="mono">${brk}A ${c.poles}P</td><td class="mono">${wire}</td><td class="mono">${ph}</td><td><button class="x" data-i="${i}">✕</button></td></tr>`;}).join('');
- $('cktTbl').querySelector('tbody').innerHTML=rows;
+  let ph;if(c.poles===2){A+=c.va/2;B+=c.va/2;ph='A+B';}else{if(A<=B){A+=c.va;ph='A';}else{B+=c.va;ph='B';}}tot+=c.va;const sl=i+1;
+  return `<tr><td class="mono">${sl}</td><td><input data-i="${i}" data-k="name" value="${c.name.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;')}"></td><td><input type="number" data-i="${i}" data-k="va" value="${c.va}" style="width:70px"></td><td><select data-i="${i}" data-k="poles"><option ${c.poles==1?'selected':''}>1</option><option ${c.poles==2?'selected':''}>2</option></select></td><td><select data-i="${i}" data-k="cont"><option value="0">Non-cont.</option><option value="1" ${c.cont?'selected':''}>Cont. 125%</option></select></td><td class="mono">${brk}A ${c.poles}P</td><td class="mono">${wire}</td><td class="mono">${ph}</td><td><button class="x" data-i="${i}">✕</button></td></tr>`;}).join('');
+ $('cktTbl').querySelector('tbody').innerHTML=rows||'<tr><td colspan=9 class="small">No circuits. Click + Circuit or Load Example House.</td></tr>';
  $('cktTbl').querySelectorAll('input,select').forEach(e=>e.onchange=()=>{const c=ckts[+e.dataset.i];const k=e.dataset.k;c[k]=k==='name'?e.value:k==='cont'?e.value==='1':+e.value;renderPanel();});
  $('cktTbl').querySelectorAll('.x').forEach(x=>x.onclick=()=>{ckts.splice(+x.dataset.i,1);renderPanel();});
  // simplified demand per 220.82 optional method (first 10 kVA @100%, remainder 40%)
- const dem=tot<=10000?tot:10000+(tot-10000)*0.4;const main=+$('mainA').value;const Ia=A/120,Ib=B/120,dA=dem/240;
+ const dem=tot<=10000?tot:10000+(tot-10000)*0.4;const main=Math.max(1,+$('mainA').value||200);const Ia=A/120,Ib=B/120,dA=dem/240;
  const imb=Math.abs(A-B)/Math.max(A,B,1)*100;
  $('panelSum').innerHTML=`Connected load: <b>${(tot/1000).toFixed(2)} kVA</b> · Phase A ${(A/1000).toFixed(2)} kVA (${Ia.toFixed(1)} A) · Phase B ${(B/1000).toFixed(2)} kVA (${Ib.toFixed(1)} A)<br>Phase imbalance: <b class="${imb>10?'bad':'ok'}">${imb.toFixed(1)}%</b> · Demand (220.82-style): <b>${(dem/1000).toFixed(2)} kVA → ${dA.toFixed(1)} A @ 240 V</b><br>Main ${main} A: <b class="${dA<=main*0.8?'ok':'bad'}">${(dA/main*100).toFixed(0)}% loaded ${dA<=main*0.8?'✓ OK':'⚠ consider upsizing service'}</b>`;}
 $('addCkt').onclick=()=>{ckts.push({name:'New circuit',va:1000,poles:1,cont:false});renderPanel();};$('exPanel').onclick=exPanel;$('mainA').onchange=renderPanel;
@@ -195,9 +218,9 @@ let wires=[['12',3],['12',1]];
 $('wSize').innerHTML=Object.keys(THHN).map(k=>`<option>${k}</option>`).join('');$('wSize').value='12';
 function fillSizes(){$('cSize').innerHTML=Object.keys(COND[$('cType').value]).map(k=>`<option>${k}</option>`).join('');$('cSize').value='3/4"';}
 function renderFill(){const area=COND[$('cType').value][$('cSize').value];let n=0,a=0;
- $('wTbl').querySelector('tbody').innerHTML=wires.map((w,i)=>{n+=w[1];a+=w[1]*THHN[w[0]];return `<tr><td>#${w[0]}</td><td>${w[1]}</td><td class="mono">${(w[1]*THHN[w[0]]).toFixed(4)}</td><td><button class="x" data-i="${i}">✕</button></td></tr>`;}).join('');
+ $('wTbl').querySelector('tbody').innerHTML=(wires.length?'':'<tr><td colspan=4 class="small">No conductors yet. Pick a size &amp; qty and click Add THHN.</td></tr>')+wires.map((w,i)=>{n+=w[1];a+=w[1]*THHN[w[0]];return `<tr><td>#${w[0]}</td><td>${w[1]}</td><td class="mono">${(w[1]*THHN[w[0]]).toFixed(4)}</td><td><button class="x" data-i="${i}">✕</button></td></tr>`;}).join('');
  $('wTbl').querySelectorAll('.x').forEach(x=>x.onclick=()=>{wires.splice(+x.dataset.i,1);renderFill();});
- const lim=n===1?53:n===2?31:40,pct=a/area*100;const ok=pct<=lim;
+ if(!n){$('fillBar').style.width='0';$('fillOut').innerHTML='Add conductors to compute fill.';return;}const lim=n===1?53:n===2?31:40,pct=a/area*100;const ok=pct<=lim;
  let rec='';for(const[s,ar] of Object.entries(COND[$('cType').value]))if(a/ar*100<=lim){rec=s;break;}
  $('fillBar').style.width=Math.min(100,pct/lim*100)+'%';$('fillBar').style.background=ok?(pct>lim*.85?'#f59e0b':'#10b981'):'#f87171';
  const derate=n>3?(n<=6?'80%':n<=9?'70%':n<=20?'50%':'45%'):'none';
