@@ -12,9 +12,18 @@ const G=25,svg=$('svg'),NS='http://www.w3.org/2000/svg';
 let parts=[],tool='R',pending=null,uid=1;
 document.querySelectorAll('.tool').forEach(b=>b.onclick=()=>{document.querySelectorAll('.tool').forEach(x=>x.classList.remove('active'));b.classList.add('active');tool=b.dataset.t;pending=null;draw();});
 const key=p=>p[0]+','+p[1];
-function terms(p){if(p.t==='O')return [[p.x-2,p.y-1],[p.x-2,p.y+1],[p.x+2,p.y]];if(p.t==='G')return [[p.x,p.y]];return [p.a,p.b];}
+// local->world for op-amp / ground: flip (fx: mirror x, fy: mirror y) then rotate rot*90° clockwise
+function xf(p,lx,ly){if(p.fx)lx=-lx;if(p.fy)ly=-ly;for(let k=0;k<((p.rot||0)&3);k++){const t=lx;lx=-ly;ly=t;}return [p.x+lx,p.y+ly];}
+function terms(p){if(p.t==='O')return [xf(p,-2,-1),xf(p,-2,1),xf(p,2,0)];if(p.t==='G')return [[p.x,p.y]];return [p.a,p.b];}
+function rotatePart(p){if(p.a){const cx=Math.round((p.a[0]+p.b[0])/2),cy=Math.round((p.a[1]+p.b[1])/2);const r=q=>[cx-(q[1]-cy),cy+(q[0]-cx)];p.a=r(p.a);p.b=r(p.b);}else p.rot=((p.rot||0)+1)&3;}
+function flipPart(p,vert){if(p.a){if(vert){const s2=p.a[1]+p.b[1];p.a=[p.a[0],s2-p.a[1]];p.b=[p.b[0],s2-p.b[1]];}else{const s2=p.a[0]+p.b[0];p.a=[s2-p.a[0],p.a[1]];p.b=[s2-p.b[0],p.b[1]];}}
+  else{/* screen mirror: Mx∘R^k = R^-k∘Mx, My = R^2∘Mx */p.fx=!p.fx;p.rot=((vert?2:0)-(p.rot||0)+4)&3;}}
+let hover=null;
 function el(tag,at,parent=svg){const e=document.createElementNS(NS,tag);for(const k in at)e.setAttribute(k,at[k]);parent.appendChild(e);return e;}
-function solve(){
+function solve(){let sat=new Map();for(let it=0;it<8;it++){const r=solveLin(sat);if(r.err)return r;let ch=false;
+  r.vs.forEach(p=>{if(p.t!=='O'||sat.has(p))return;const vo=r.V(terms(p)[2]),hi=p.vp??15,lo=p.vn??-15;if(vo>hi+1e-9){sat.set(p,hi);ch=true;}else if(vo<lo-1e-9){sat.set(p,lo);ch=true;}});
+  if(!ch){r.sat=sat;return r;}}return solveLin(sat);}
+function solveLin(sat){
   // union-find nodes
   const par={};const f=k=>{if(!(k in par))par[k]=k;while(par[k]!==k){par[k]=par[par[k]];k=par[k];}return k;};const u=(a,b)=>{par[f(a)]=f(b);};
   parts.forEach(p=>terms(p).forEach(t=>f(key(t))));
@@ -31,7 +40,7 @@ function solve(){
   parts.forEach(p=>{if(p.t==='R'){const g=1/p.v,a=ni(p.a),b=ni(p.b);if(a>=0)A[a][a]+=g;if(b>=0)A[b][b]+=g;if(a>=0&&b>=0){A[a][b]-=g;A[b][a]-=g;}}
     if(p.t==='I'){const a=ni(p.a),b=ni(p.b);/* current flows a->b through source, i.e. leaves node a into source, enters b */ if(a>=0)z[a]-=p.v;if(b>=0)z[b]+=p.v;}});
   vs.forEach((p,k)=>{const r=n+k;if(p.t==='V'){const a=ni(p.a),b=ni(p.b);/* b is + terminal */ if(b>=0){A[b][r]+=1;A[r][b]+=1;}if(a>=0){A[a][r]-=1;A[r][a]-=1;}z[r]=p.v;}
-    else{const [m,pl,o]=terms(p).map(ni);if(o>=0)A[o][r]+=1;if(pl>=0)A[r][pl]+=1;if(m>=0)A[r][m]-=1;z[r]=0;}});
+    else{const [m,pl,o]=terms(p).map(ni);if(o>=0)A[o][r]+=1;if(sat.has(p)){if(o>=0)A[r][o]+=1;else A[r][r]+=1;z[r]=sat.get(p);}else{if(pl>=0)A[r][pl]+=1;if(m>=0)A[r][m]-=1;z[r]=0;}}});
   for(const p of parts)if(p.t==='V'&&ni(p.a)===ni(p.b))return {err:`Voltage source (${p.v} V) is shorted: both terminals are on the same node. Remove the wire across it.`};
   for(let i=0;i<n;i++)A[i][i]+=1e-12; // gmin: lets floating parts solve instead of crashing
   // gaussian elimination
@@ -49,12 +58,17 @@ function solve(){
 function draw(){
   svg.innerHTML='';const w=svg.clientWidth||900,h=520;
   for(let x=G;x<w;x+=G)for(let y=G;y<h;y+=G)el('circle',{cx:x,cy:y,r:1.2,fill:'#2a3550'});
-  const s=solve();const C={R:'#f59e0b',V:'#38bdf8',I:'#a78bfa',W:'#94a3b8',O:'#10b981',G:'#94a3b8'};
-  parts.forEach(p=>{const g=el('g',{});const col=C[p.t];
-    if(p.t==='G'){const X=p.x*G,Y=p.y*G;el('line',{x1:X,y1:Y,x2:X,y2:Y+8,stroke:col,'stroke-width':2},g);[14,9,4].forEach((l,i)=>el('line',{x1:X-l/2*1.4,y1:Y+8+i*4,x2:X+l/2*1.4,y2:Y+8+i*4,stroke:col,'stroke-width':2},g));}
-    else if(p.t==='O'){const X=p.x*G,Y=p.y*G;el('path',{d:`M${X-G*1.4},${Y-G*1.6} L${X-G*1.4},${Y+G*1.6} L${X+G*1.4},${Y} Z`,fill:'rgba(16,185,129,.08)',stroke:col,'stroke-width':2},g);
-      el('line',{x1:X-2*G,y1:Y-G,x2:X-1.4*G,y2:Y-G,stroke:col,'stroke-width':2},g);el('line',{x1:X-2*G,y1:Y+G,x2:X-1.4*G,y2:Y+G,stroke:col,'stroke-width':2},g);el('line',{x1:X+1.4*G,y1:Y,x2:X+2*G,y2:Y,stroke:col,'stroke-width':2},g);
-      const t1=el('text',{x:X-1.2*G,y:Y-G+5,fill:col,'font-size':14},g);t1.textContent='−';const t2=el('text',{x:X-1.2*G,y:Y+G+5,fill:col,'font-size':14},g);t2.textContent='+';}
+  const s=solve();let C={R:'#f59e0b',V:'#38bdf8',I:'#a78bfa',W:'#94a3b8',O:'#10b981',G:'#94a3b8'};
+  parts.forEach(p=>{const g=el('g',{});let col=C[p.t];
+    if(p.t==='G'){const X=p.x*G,Y=p.y*G;const gg=el('g',{transform:`translate(${X},${Y}) rotate(${(p.rot||0)*90})`},g);el('line',{x1:0,y1:0,x2:0,y2:8,stroke:col,'stroke-width':2},gg);[14,9,4].forEach((l,i)=>el('line',{x1:-l/2*1.4,y1:8+i*4,x2:l/2*1.4,y2:8+i*4,stroke:col,'stroke-width':2},gg));}
+    else if(p.t==='O'){const X=p.x*G,Y=p.y*G;const sv=s.sat&&s.sat.has(p)?s.sat.get(p):null;if(sv!==null)col='#f87171';
+      const og=el('g',{transform:`translate(${X},${Y}) rotate(${(p.rot||0)*90}) scale(${p.fx?-1:1},${p.fy?-1:1})`,class:'opamp'+(sv!==null?' sat':'')},g);
+      el('path',{d:`M${-G*1.4},${-G*1.6} L${-G*1.4},${G*1.6} L${G*1.4},0 Z`,fill:sv!==null?'rgba(248,113,113,.15)':'rgba(16,185,129,.08)',stroke:col,'stroke-width':2},og);
+      el('line',{x1:-2*G,y1:-G,x2:-1.4*G,y2:-G,stroke:col,'stroke-width':2},og);el('line',{x1:-2*G,y1:G,x2:-1.4*G,y2:G,stroke:col,'stroke-width':2},og);el('line',{x1:1.4*G,y1:0,x2:2*G,y2:0,stroke:col,'stroke-width':2},og);
+      [[-1,'−'],[1,'+']].forEach(([sy,ch])=>{const [tx,ty]=xf(p,-1.55,sy*1);const t=el('text',{x:tx*G-p.x*G+X,y:ty*G-p.y*G+Y+5,fill:col,'font-size':14,'text-anchor':'middle'},g);t.textContent=ch;});
+      const rl=el('text',{x:X,y:Y+G*2.4,fill:'#f8fafc','font-size':11,'text-anchor':'middle',style:'cursor:pointer;font-family:JetBrains Mono',class:'oplab'},g);rl.textContent=`rails +${+(p.vp??15).toPrecision(4)}/${+(p.vn??-15).toPrecision(4)}V`;el('title',{},rl).textContent='Click to set supply rails';
+      rl.onclick=e=>{if(tool==='X'||tool==='M'||tool==='T'||tool==='F')return;e.stopPropagation();const nv=prompt('Supply rails "+V, -V" (e.g. 15, -15 or 12,0):',`${p.vp??15}, ${p.vn??-15}`);if(nv===null)return;const [a,b]=nv.split(/[,\s]+/).filter(Boolean).map(parseSI);if(isNaN(a)||isNaN(b)||a<=b){alert('Enter two numbers with +V greater than −V, e.g. 15, -15.');return;}snap();p.vp=a;p.vn=b;draw();};
+      if(sv!==null){const st=el('text',{x:X,y:Y-G*2,fill:'#f87171','font-size':12,'font-weight':'bold','text-anchor':'middle',class:'satlab'},g);st.textContent=`⚠ SATURATED ${sv>0?'+':''}${+sv.toPrecision(4)} V`;}}
     else{const [x1,y1]=p.a.map(v=>v*G),[x2,y2]=p.b.map(v=>v*G);const L=Math.hypot(x2-x1,y2-y1)||1,ux=(x2-x1)/L,uy=(y2-y1)/L,mx=(x1+x2)/2,my=(y1+y2)/2;
       if(p.t==='W')el('line',{x1,y1,x2,y2,stroke:col,'stroke-width':2},g);
       else{const bl=Math.min(18,L/2-2);el('line',{x1,y1,x2:mx-ux*bl,y2:my-uy*bl,stroke:col,'stroke-width':2},g);el('line',{x1:mx+ux*bl,y1:my+uy*bl,x2,y2,stroke:col,'stroke-width':2},g);
@@ -63,32 +77,33 @@ function draw(){
         else{el('circle',{cx:0,cy:0,r:bl,fill:'#0e1422',stroke:col,'stroke-width':2},b);if(p.t==='V'){const t=el('text',{x:bl-11,y:4,fill:col,'font-size':12,transform:''},b);t.textContent='+';const t2=el('text',{x:-bl+4,y:4,fill:col,'font-size':12},b);t2.textContent='−';}else el('path',{d:`M-9,0 L7,0 M2,-5 L8,0 L2,5`,stroke:col,fill:'none','stroke-width':2},b);}
         const lab=el('text',{x:mx-uy*24,y:my+ux*24+4,fill:'#f8fafc','font-size':12,'text-anchor':'middle',style:'cursor:pointer;font-family:JetBrains Mono'},g);
         lab.textContent=p.t==='R'?fmt(p.v,'Ω').replace(' ',''):p.t==='V'?(+p.v.toPrecision(6))+' V':fmt(p.v,'A');const tt=el('title',{},lab);tt.textContent='Click to edit value';
-        lab.onclick=e=>{e.stopPropagation();if(tool==='X'||tool==='M')return;const u=p.t==='R'?'Ω':p.t==='V'?'V':'A';const nv=prompt(`New value in ${u} (SI suffixes OK: 4.7k, 2m, 1meg):`,p.v);if(nv===null)return;const v=parseSI(nv);if(isNaN(v)||(p.t==='R'&&v<=0)){alert(p.t==='R'?'Resistance must be a positive number, e.g. 1k or 470.':'Enter a number, e.g. 5 or 2m.');return;}snap();p.v=v;draw();};
+        lab.onclick=e=>{if(tool==='X'||tool==='M'||tool==='T'||tool==='F')return;e.stopPropagation();const u=p.t==='R'?'Ω':p.t==='V'?'V':'A';const nv=prompt(`New value in ${u} (SI suffixes OK: 4.7k, 2m, 1meg):`,p.v);if(nv===null)return;const v=parseSI(nv);if(isNaN(v)||(p.t==='R'&&v<=0)){alert(p.t==='R'?'Resistance must be a positive number, e.g. 1k or 470.':'Enter a number, e.g. 5 or 2m.');return;}snap();p.v=v;draw();};
         // current arrow
         if(!s.err){let i=null;if(p.t==='R')i=(s.V(p.a)-s.V(p.b))/p.v;if(p.t==='I')i=p.v;
           if(i!==null&&Math.abs(i)>1e-12){const d=i>0?1:-1,ax=mx+uy*14,ay=my-ux*14;el('path',{d:`M${ax-ux*d*10},${ay-uy*d*10} L${ax+ux*d*10},${ay+uy*d*10}`,stroke:'#f87171','stroke-width':2,'marker-end':'url(#arr)'},g);
             const ti=el('text',{x:mx+uy*30,y:my-ux*30+4,fill:'#f87171','font-size':11,'text-anchor':'middle','font-family':'JetBrains Mono'},g);ti.textContent=fmt(Math.abs(i),'A');}}}}
-    g.style.cursor=tool==='X'?'not-allowed':tool==='M'?'move':'';g.onclick=e=>{if(tool==='X'){e.stopPropagation();snap();parts=parts.filter(q=>q!==p);draw();}};
+    g.style.cursor=tool==='X'?'not-allowed':tool==='M'?'move':(tool==='T'||tool==='F')?'pointer':'';g.onclick=e=>{if(tool==='X'){e.stopPropagation();snap();parts=parts.filter(q=>q!==p);draw();}else if(tool==='T'){e.stopPropagation();snap();rotatePart(p);draw();}else if(tool==='F'){e.stopPropagation();snap();flipPart(p,e.shiftKey);draw();}};
+    g.onpointerenter=()=>{hover=p;};g.onpointerleave=()=>{if(hover===p)hover=null;};
     g.oncontextmenu=e=>{e.preventDefault();snap();parts=parts.filter(q=>q!==p);draw();};
     g.onpointerdown=e=>{if(tool!=='M')return;e.stopPropagation();e.preventDefault();snap();drag={p,x0:e.clientX,y0:e.clientY,orig:JSON.stringify(p)};};
     // fat invisible hit area
-    if(p.a)el('line',{x1:p.a[0]*G,y1:p.a[1]*G,x2:p.b[0]*G,y2:p.b[1]*G,stroke:'transparent','stroke-width':14},g);});
+    if(!p.a)el('circle',{cx:p.x*G,cy:p.y*G,r:p.t==='O'?G*1.6:G*0.7,fill:'transparent'},g);if(p.a)el('line',{x1:p.a[0]*G,y1:p.a[1]*G,x2:p.b[0]*G,y2:p.b[1]*G,stroke:'transparent','stroke-width':14},g);});
   const defs=el('defs',{});const mk=el('marker',{id:'arr',markerWidth:8,markerHeight:8,refX:6,refY:4,orient:'auto'},defs);el('path',{d:'M0,0 L8,4 L0,8 Z',fill:'#f87171'},mk);
   // node labels
   const out=$('solOut');
-  if(!parts.length){out.innerHTML='<span class="small">Empty canvas. Load an example above, or pick a part (shortcut keys R V I W G O) and click two grid points to place it. Add a Ground, then results appear here.</span>';}
+  if(!parts.length){out.innerHTML='<span class="small">Empty canvas. Load an example above, or pick a part (shortcut keys R V I W G O; hover a part and press R to rotate, F / Shift+F to flip) and click two grid points to place it. Add a Ground, then results appear here.</span>';}
   else if(s.err){out.innerHTML='<span class="warn">'+s.err+'</span>';}
   else{const seen={};parts.forEach(p=>terms(p).forEach(t=>{const nm=s.nodeName(t);if(nm==='GND'||seen[nm])return;seen[nm]=1;const tx=el('text',{x:t[0]*G+5,y:t[1]*G-6,fill:'#38bdf8','font-size':11,'font-family':'JetBrains Mono'});tx.textContent=nm+'='+s.V(t).toFixed(3)+'V';}));
     let h='<b>Node voltages</b><br>';Object.keys(seen).sort((a,b)=>+a.slice(1)-+b.slice(1)).forEach(nm=>{const r=s.roots[+nm.slice(1)-1];h+=nm+' = '+s.x[s.idx[r]].toFixed(4)+' V<br>';});
     h+='<br><b>Branch currents</b> (direction shown by red arrows)<br>';let ri=1,vi=0;
     parts.forEach(p=>{if(p.t==='R'){const i=(s.V(p.a)-s.V(p.b))/p.v;const A=s.nodeName(p.a),B=s.nodeName(p.b);h+=`R${ri++} ${fmt(p.v,'Ω')}: ${fmt(Math.abs(i),'A')} ${i>=0?A+'→'+B:B+'→'+A}<br>`;}});
-    s.vs.forEach((p,k)=>{const i=s.x[s.n+k];h+=(p.t==='V'?`V source ${p.v} V `:'Op-amp output ')+(-i>=0?'sources ':'sinks ')+fmt(Math.abs(i),'A')+'<br>';});
+    s.vs.forEach((p,k)=>{const i=s.x[s.n+k];if(p.t==='O'&&s.sat.has(p))h+=`<span class="bad">⚠ Op-amp output saturated at ${s.sat.get(p)} V rail (clipped; inputs no longer equal). </span>`;h+=(p.t==='V'?`V source ${p.v} V `:'Op-amp output ')+(-i>=0?'sources ':'sinks ')+fmt(Math.abs(i),'A')+'<br>';});
     if(s.floating.length)h='<div class="warn">⚠ '+s.floating.length+' node(s) not connected to ground; parts there are floating (shown as ~0 V, no current). Wire them into the circuit.</div>'+h;
     out.innerHTML=h;}
   if(pending){el('circle',{cx:pending[0]*G,cy:pending[1]*G,r:5,fill:'#f59e0b'});}
 }
 svg.onclick=e=>{const r=svg.getBoundingClientRect();const p=[Math.round((e.clientX-r.left)/G),Math.round((e.clientY-r.top)/G)];
-  if(tool==='X'||tool==='M'||justDragged){justDragged=false;return;}snap();if(tool==='G'){parts.push({t:'G',x:p[0],y:p[1]});draw();return;}if(tool==='O'){parts.push({t:'O',x:p[0],y:p[1]});draw();return;}
+  if(tool==='X'||tool==='M'||tool==='T'||tool==='F'||justDragged){justDragged=false;return;}snap();if(tool==='G'){parts.push({t:'G',x:p[0],y:p[1]});draw();return;}if(tool==='O'){parts.push({t:'O',x:p[0],y:p[1]});draw();return;}
   if(!pending){hist.pop();pending=p;draw();return;}if(key(pending)===key(p)){hist.pop();pending=null;draw();return;}
   parts.push({t:tool,a:pending,b:p,v:tool==='R'?1000:tool==='V'?5:0.001});pending=null;draw();};
 function exInv(){parts=[{t:'V',a:[4,10],b:[4,6],v:2},{t:'G',x:4,y:10},{t:'R',a:[4,6],b:[10,6],v:1000},{t:'W',a:[10,6],b:[12,6]},{t:'W',a:[10,6],b:[10,3]},{t:'R',a:[10,3],b:[18,3],v:4700},{t:'W',a:[18,3],b:[18,7]},
@@ -101,7 +116,10 @@ window.addEventListener('pointerup',()=>{if(drag){if(drag.orig===JSON.stringify(
 function setTool(t){document.querySelectorAll('.tool').forEach(x=>x.classList.toggle('active',x.dataset.t===t));tool=t;pending=null;draw();}
 document.addEventListener('keydown',e=>{if(!$('sch').classList.contains('active')||/INPUT|SELECT|TEXTAREA/.test(e.target.tagName))return;const k=e.key;
   if((e.ctrlKey||e.metaKey)&&k.toLowerCase()==='z'){e.preventDefault();undo();return;}if(e.ctrlKey||e.metaKey||e.altKey)return;
-  const m={r:'R',v:'V',i:'I',w:'W',g:'G',o:'O',m:'M',x:'X',delete:'X',backspace:'X'}[k.toLowerCase()];if(m){e.preventDefault();setTool(m);}if(k==='Escape'){pending=null;draw();}});window.addEventListener('resize',()=>{if($('sch').classList.contains('active'))draw();});
+  const hp=hover&&parts.includes(hover)?hover:null;
+  if(hp&&k.toLowerCase()==='r'){e.preventDefault();snap();rotatePart(hp);draw();return;}
+  if(hp&&k.toLowerCase()==='f'){e.preventDefault();snap();flipPart(hp,e.shiftKey);draw();return;}
+  const m={t:'T',f:'F',r:'R',v:'V',i:'I',w:'W',g:'G',o:'O',m:'M',x:'X',delete:'X',backspace:'X'}[k.toLowerCase()];if(m){e.preventDefault();setTool(m);}if(k==='Escape'){pending=null;draw();}});window.addEventListener('resize',()=>{if($('sch').classList.contains('active'))draw();});
 exInv();
 
 /* ================= 2. ARDUINO / ESP32 + PID ================= */
