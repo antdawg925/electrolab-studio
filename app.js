@@ -1,6 +1,7 @@
 // ElectroLab Studio - Anthony Early
 document.querySelectorAll('.tab').forEach(b=>b.onclick=()=>{document.querySelectorAll('.tab,.panel').forEach(e=>e.classList.remove('active'));b.classList.add('active');document.getElementById(b.dataset.tab).classList.add('active');window.dispatchEvent(new Event('resize'));});
 const $=id=>document.getElementById(id);
+const fmtc=(v,u)=>{const a=Math.abs(v);const [d,s]=a===0?[1,'']:a<1e-3?[1e-6,'µ']:a<1?[1e-3,'m']:a>=1e6?[1e6,'M']:a>=1e3?[1e3,'k']:[1,''];return (+(v/d).toPrecision(4))+' '+s+u;};
 const fmt=(v,u)=>{const a=Math.abs(v);if(a===0)return '0 '+u;if(a<1e-3)return (v*1e6).toFixed(2)+' µ'+u;if(a<1)return (v*1e3).toFixed(3)+' m'+u;if(a>=1e3)return (v/1e3).toFixed(3)+' k'+u;return v.toFixed(3)+' '+u;};
 
 /* ================= 1. SCHEMATIC + MNA ================= */
@@ -8,7 +9,7 @@ const SI={p:1e-12,n:1e-9,u:1e-6,'µ':1e-6,m:1e-3,k:1e3,K:1e3,M:1e6,meg:1e6};
 function parseSI(t){const m=String(t).trim().replace(/\s|Ω|ohms?|[VvAa]$/g,'').match(/^(-?\d*\.?\d+(?:e-?\d+)?)(meg|[pnuµmkKM])?$/);return m?parseFloat(m[1])*(m[2]?SI[m[2]]:1):NaN;}
 let hist=[];const snap=()=>{hist.push(JSON.stringify(parts));if(hist.length>100)hist.shift();};
 function undo(){if(hist.length){parts=JSON.parse(hist.pop());pending=null;draw();}}
-const G=25,svg=$('svg'),NS='http://www.w3.org/2000/svg';
+const SVGH=440,G=25,svg=$('svg'),NS='http://www.w3.org/2000/svg';
 let parts=[],tool='R',pending=null,uid=1;
 document.querySelectorAll('.tool').forEach(b=>b.onclick=()=>{document.querySelectorAll('.tool').forEach(x=>x.classList.remove('active'));b.classList.add('active');tool=b.dataset.t;pending=null;draw();});
 const key=p=>p[0]+','+p[1];
@@ -56,7 +57,7 @@ function solveLin(sat){
   return {floating,V,x,n,vs,nodeName:t=>names[f(key(t))],roots,idx,f};
 }
 function draw(){
-  svg.innerHTML='';const w=svg.clientWidth||900,h=520;
+  svg.innerHTML='';const w=svg.clientWidth||900,h=SVGH;
   for(let x=G;x<w;x+=G)for(let y=G;y<h;y+=G)el('circle',{cx:x,cy:y,r:1.2,fill:'#2a3550'});
   const s=solve();let C={R:'#f59e0b',V:'#38bdf8',I:'#a78bfa',W:'#94a3b8',O:'#10b981',G:'#94a3b8'};
   parts.forEach(p=>{const g=el('g',{});let col=C[p.t];
@@ -75,13 +76,13 @@ function draw(){
         const ang=Math.atan2(uy,ux)*180/Math.PI,b=el('g',{transform:`translate(${mx},${my}) rotate(${ang})`},g);
         if(p.t==='R'){let d=`M${-bl},0`;const seg=bl*2/6;for(let k=0;k<6;k++)d+=` L${-bl+seg*(k+.5)},${k%2?6:-6}`;d+=` L${bl},0`;el('path',{d,fill:'none',stroke:col,'stroke-width':2},b);}
         else{el('circle',{cx:0,cy:0,r:bl,fill:'#0e1422',stroke:col,'stroke-width':2},b);if(p.t==='V'){const t=el('text',{x:bl-11,y:4,fill:col,'font-size':12,transform:''},b);t.textContent='+';const t2=el('text',{x:-bl+4,y:4,fill:col,'font-size':12},b);t2.textContent='−';}else el('path',{d:`M-9,0 L7,0 M2,-5 L8,0 L2,5`,stroke:col,fill:'none','stroke-width':2},b);}
-        const lab=el('text',{x:mx-uy*24,y:my+ux*24+4,fill:'#f8fafc','font-size':12,'text-anchor':'middle',style:'cursor:pointer;font-family:JetBrains Mono'},g);
-        lab.textContent=p.t==='R'?fmt(p.v,'Ω').replace(' ',''):p.t==='V'?(+p.v.toPrecision(6))+' V':fmt(p.v,'A');const tt=el('title',{},lab);tt.textContent='Click to edit value';
+        const vert=Math.abs(uy)>Math.abs(ux);const lab=el('text',{x:vert?mx-uy*16:mx-uy*24,y:my+ux*24+4,fill:'#f8fafc','font-size':12,'text-anchor':vert?(uy>0?'end':'start'):'middle',class:'vlab',style:'cursor:pointer;font-family:JetBrains Mono'},g);
+        lab.textContent=p.t==='R'?fmtc(p.v,'Ω'):p.t==='V'?(+p.v.toPrecision(6))+' V':fmt(p.v,'A');const tt=el('title',{},lab);tt.textContent='Click to edit value';
         lab.onclick=e=>{if(tool==='X'||tool==='M'||tool==='T'||tool==='F')return;e.stopPropagation();const u=p.t==='R'?'Ω':p.t==='V'?'V':'A';const nv=prompt(`New value in ${u} (SI suffixes OK: 4.7k, 2m, 1meg):`,p.v);if(nv===null)return;const v=parseSI(nv);if(isNaN(v)||(p.t==='R'&&v<=0)){alert(p.t==='R'?'Resistance must be a positive number, e.g. 1k or 470.':'Enter a number, e.g. 5 or 2m.');return;}snap();p.v=v;draw();};
         // current arrow
         if(!s.err){let i=null;if(p.t==='R')i=(s.V(p.a)-s.V(p.b))/p.v;if(p.t==='I')i=p.v;
           if(i!==null&&Math.abs(i)>1e-12){const d=i>0?1:-1,ax=mx+uy*14,ay=my-ux*14;el('path',{d:`M${ax-ux*d*10},${ay-uy*d*10} L${ax+ux*d*10},${ay+uy*d*10}`,stroke:'#f87171','stroke-width':2,'marker-end':'url(#arr)'},g);
-            const ti=el('text',{x:mx+uy*30,y:my-ux*30+4,fill:'#f87171','font-size':11,'text-anchor':'middle','font-family':'JetBrains Mono'},g);ti.textContent=fmt(Math.abs(i),'A');}}}}
+            const ti=el('text',{x:vert?mx+uy*26:mx+uy*30,y:my-ux*30+4,fill:'#f87171','font-size':11,'text-anchor':vert?(uy>0?'start':'end'):'middle','font-family':'JetBrains Mono'},g);ti.textContent=fmtc(Math.abs(i),'A');}}}}
     g.style.cursor=tool==='X'?'not-allowed':tool==='M'?'move':(tool==='T'||tool==='F')?'pointer':'';g.onclick=e=>{if(tool==='X'){e.stopPropagation();snap();parts=parts.filter(q=>q!==p);draw();}else if(tool==='T'){e.stopPropagation();snap();rotatePart(p);draw();}else if(tool==='F'){e.stopPropagation();snap();flipPart(p,e.shiftKey);draw();}};
     g.onpointerenter=()=>{hover=p;};g.onpointerleave=()=>{if(hover===p)hover=null;};
     g.oncontextmenu=e=>{e.preventDefault();snap();parts=parts.filter(q=>q!==p);draw();};
@@ -91,9 +92,9 @@ function draw(){
   const defs=el('defs',{});const mk=el('marker',{id:'arr',markerWidth:8,markerHeight:8,refX:6,refY:4,orient:'auto'},defs);el('path',{d:'M0,0 L8,4 L0,8 Z',fill:'#f87171'},mk);
   // node labels
   const out=$('solOut');
-  if(!parts.length){out.innerHTML='<span class="small">Empty canvas. Load an example above, or pick a part (shortcut keys R V I W G O; hover a part and press R to rotate, F / Shift+F to flip) and click two grid points to place it. Add a Ground, then results appear here.</span>';}
+  if(!parts.length){out.innerHTML='<span class="small">Empty canvas. Load an example from the toolbar, or pick a part (shortcut keys R V I W G O; hover a part and press R to rotate, F / Shift+F to flip) and click two grid points to place it. Add a Ground, then results appear here.</span>';}
   else if(s.err){out.innerHTML='<span class="warn">'+s.err+'</span>';}
-  else{const seen={};parts.forEach(p=>terms(p).forEach(t=>{const nm=s.nodeName(t);if(nm==='GND'||seen[nm])return;seen[nm]=1;const tx=el('text',{x:t[0]*G+5,y:t[1]*G-6,fill:'#38bdf8','font-size':11,'font-family':'JetBrains Mono'});tx.textContent=nm+'='+s.V(t).toFixed(3)+'V';}));
+  else{const seen={};parts.forEach(p=>terms(p).forEach(t=>{const nm=s.nodeName(t);if(nm==='GND'||seen[nm])return;seen[nm]=1;const tx=el('text',{x:t[0]*G+5,y:t[1]*G-6,fill:'#38bdf8','font-size':11,'font-family':'JetBrains Mono'});tx.textContent=nm+' '+(+s.V(t).toFixed(3))+' V';}));
     let h='<b>Node voltages</b><br>';Object.keys(seen).sort((a,b)=>+a.slice(1)-+b.slice(1)).forEach(nm=>{const r=s.roots[+nm.slice(1)-1];h+=nm+' = '+s.x[s.idx[r]].toFixed(4)+' V<br>';});
     h+='<br><b>Branch currents</b> (direction shown by red arrows)<br>';let ri=1,vi=0;
     parts.forEach(p=>{if(p.t==='R'){const i=(s.V(p.a)-s.V(p.b))/p.v;const A=s.nodeName(p.a),B=s.nodeName(p.b);h+=`R${ri++} ${fmt(p.v,'Ω')}: ${fmt(Math.abs(i),'A')} ${i>=0?A+'→'+B:B+'→'+A}<br>`;}});
@@ -121,6 +122,7 @@ document.addEventListener('keydown',e=>{if(!$('sch').classList.contains('active'
   if(hp&&k.toLowerCase()==='f'){e.preventDefault();snap();flipPart(hp,e.shiftKey);draw();return;}
   const m={t:'T',f:'F',r:'R',v:'V',i:'I',w:'W',g:'G',o:'O',m:'M',x:'X',delete:'X',backspace:'X'}[k.toLowerCase()];if(m){e.preventDefault();setTool(m);}if(k==='Escape'){pending=null;draw();}});window.addEventListener('resize',()=>{if($('sch').classList.contains('active'))draw();});
 exInv();
+{const ix=$('intro');let gone=false;try{gone=localStorage.getItem('elIntro')==='x';}catch(e){}if(gone)ix.remove();else $('introX').onclick=()=>{ix.remove();try{localStorage.setItem('elIntro','x');}catch(e){}};}
 
 /* ================= 2. ARDUINO / ESP32 + PID ================= */
 const BOARDS={uno:{name:'Arduino Uno',pins:{D2:'Digital, INT0',D3:'Digital, PWM, INT1',D4:'Digital',D5:'Digital, PWM',D6:'Digital, PWM',D7:'Digital',D8:'Digital',D9:'Digital, PWM',D10:'Digital, PWM, SS',D11:'Digital, PWM, MOSI',D12:'Digital, MISO',D13:'Digital, SCK, LED',A0:'Analog in',A1:'Analog in',A2:'Analog in',A3:'Analog in',A4:'Analog, SDA',A5:'Analog, SCL'}},
@@ -147,18 +149,18 @@ function simPID(){const kp=+$('kp').value,ki=+$('ki').value,kd=+$('kd').value,sp
  const dt=0.01,T=4,tau=0.25,K=3;let th=0,w=0,I=0,pe=sp;const ys=[],us=[];
  for(let t=0;t<T;t+=dt){const e=sp-th;let D=(e-pe)/dt;pe=e;let u=kp*e+ki*I+kd*D;const us0=u;u=Math.max(-255,Math.min(255,u));if(u===us0)I+=e*dt;
   w+=dt*(K*u-w)/tau;th+=w*dt;ys.push(th);us.push(u);}
- const c=$('pidPlot'),x=c.getContext('2d'),W=c.width,H=c.height;x.fillStyle='#0e1422';x.fillRect(0,0,W,H);
+ const c=$('pidPlot'),dpr=Math.min(2,window.devicePixelRatio||1),W=c.clientWidth||640,H=300;c.width=W*dpr;c.height=H*dpr;c.style.height=H+'px';const x=c.getContext('2d');x.setTransform(dpr,0,0,dpr,0,0);x.fillStyle='#0e1422';x.fillRect(0,0,W,H);
  const ymax=Math.max(sp*1.6,...ys)*1.05,ymin=Math.min(0,...ys);const Y=v=>H-25-(v-ymin)/(ymax-ymin)*(H-45),X=i=>40+i/ys.length*(W-50);
- x.strokeStyle='#1f2a40';x.fillStyle='#94a3b8';x.font='11px JetBrains Mono';for(let k=0;k<=4;k++){const v=ymin+(ymax-ymin)*k/4;x.beginPath();x.moveTo(40,Y(v));x.lineTo(W-10,Y(v));x.stroke();x.fillText(v.toFixed(0),4,Y(v)+4);}
+ x.strokeStyle='#1f2a40';x.fillStyle='#94a3b8';x.font='12px JetBrains Mono';for(let k=0;k<=4;k++){const v=ymin+(ymax-ymin)*k/4;x.beginPath();x.moveTo(40,Y(v));x.lineTo(W-10,Y(v));x.stroke();x.fillText(v.toFixed(0),4,Y(v)+4);}
  for(let s=0;s<=T;s++)x.fillText(s+'s',X(s/dt)-6,H-8);
  x.setLineDash([6,4]);x.strokeStyle='#f59e0b';x.beginPath();x.moveTo(40,Y(sp));x.lineTo(W-10,Y(sp));x.stroke();x.setLineDash([]);
  x.strokeStyle='rgba(167,139,250,.6)';x.beginPath();us.forEach((u,i)=>{const yy=H-25-(u+255)/510*(H-45);i?x.lineTo(X(i),yy):x.moveTo(X(i),yy);});x.stroke();
  x.strokeStyle='#38bdf8';x.lineWidth=2;x.beginPath();ys.forEach((v,i)=>i?x.lineTo(X(i),Y(v)):x.moveTo(X(i),Y(v)));x.stroke();x.lineWidth=1;
- x.fillStyle='#38bdf8';x.fillText('position (deg)',W-130,16);x.fillStyle='#f59e0b';x.fillText('setpoint',W-130,30);x.fillStyle='#a78bfa';x.fillText('PWM effort',W-130,44);
+ [['#38bdf8','Position (deg)'],['#f59e0b','Setpoint'],['#a78bfa','PWM effort (scaled)']].forEach(([cl,t],k)=>{x.fillStyle=cl;x.fillRect(W-170,10+k*17,10,3);x.fillText(t,W-154,16+k*17);});
  const peak=Math.max(...ys),os=Math.max(0,(peak-sp)/sp*100);let ts=null;for(let i=ys.length-1;i>=0;i--)if(Math.abs(ys[i]-sp)>0.02*sp){ts=(i+1)*dt;break;}
  const rise=ys.findIndex(v=>v>=0.9*sp)*dt;
  $('pidStats').innerHTML=`Overshoot: <b class="${os>15?'bad':'ok'}">${os.toFixed(1)}%</b> · Rise (0→90%): ${rise>0?rise.toFixed(2)+' s':'n/a'} · 2% settle: ${ts===null?'0 s':ts>=T-dt?'not settled':ts.toFixed(2)+' s'} · Final error: ${(sp-ys[ys.length-1]).toFixed(2)}°`;genIno();}
-['kp','ki','kd','sp'].forEach(k=>$(k).oninput=simPID);
+['kp','ki','kd','sp'].forEach(k=>$(k).oninput=simPID);window.addEventListener('resize',()=>{if($('ard').classList.contains('active'))simPID();});
 function genIno(){const g=n=>{const a=assign.find(a=>a[0].startsWith(n));return a?a[1].replace('GPIO',''):'/*unassigned*/0';};const esp=$('board').value==='esp32';
  const code=`// ElectroLab Studio - PID motor position control
 // Board: ${BOARDS[$('board').value].name}  |  generated ${new Date().toISOString().slice(0,10)}

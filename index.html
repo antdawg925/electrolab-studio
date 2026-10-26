@@ -3,6 +3,13 @@
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>ElectroLab Studio | Anthony Early</title>
 <meta name="description" content="ElectroLab Studio: browser-based EE workbench. Schematic + KCL nodal solver, Arduino/ESP32 pinout & PID simulator, NEC panel schedule & conduit fill, 3D mechatronics viewer.">
+<meta property="og:title" content="ElectroLab Studio | Browser EE Workbench">
+<meta property="og:description" content="Draw a circuit and get node voltages instantly (MNA/KCL solver with op-amps), tune a PID loop, size a panel per NEC, and explore 3D mechatronics models.">
+<meta property="og:image" content="https://electrolab-mu.vercel.app/docs/shot_schematic.png">
+<meta property="og:url" content="https://electrolab-mu.vercel.app">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="theme-color" content="#0b0f17">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cdefs%3E%3ClinearGradient id='g'%3E%3Cstop offset='0' stop-color='%23f59e0b'/%3E%3Cstop offset='1' stop-color='%2338bdf8'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='32' height='32' rx='8' fill='url(%23g)'/%3E%3Ctext x='16' y='21' font-family='monospace' font-weight='700' font-size='14' text-anchor='middle' fill='%230b0f17'%3EEL%3C/text%3E%3C/svg%3E">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="styles.css">
 <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}</script>
@@ -18,14 +25,25 @@
 <!-- SCHEMATIC -->
 <section id="sch" class="panel active">
 <div class="toolbar">
-<span class="lbl">Place:</span>
-<button class="tool active" data-t="R" title="Resistor (R)">Resistor</button><button class="tool" data-t="V" title="DC voltage source: + at the end point (V)">DC Voltage</button><button class="tool" data-t="I" title="DC current source: arrow from start to end point (I)">DC Current</button><button class="tool" data-t="W" title="Wire (W): also joins any part ends lying on it">Wire</button><button class="tool" data-t="G" title="Ground / 0 V reference (G)">Ground</button><button class="tool" data-t="O" title="Op-amp, single click; − input top, + bottom. Clips at its supply rails (default ±15 V; click the rails label to change) (O)">Op-Amp</button><button class="tool" data-t="T" title="Rotate: click a part to turn it 90° clockwise (T). Shortcut: hover any part and press R">⟳ Rotate</button><button class="tool" data-t="F" title="Flip: click a part to mirror it horizontally, Shift+click vertically (F). Shortcut: hover a part and press F / Shift+F">⇋ Flip</button><button class="tool" data-t="M" title="Move: drag a part to a new spot (M)">Move</button><button class="tool" data-t="X" title="Delete tool: click a part (X / Del). Right-click any part also deletes">Delete</button>
-<span class="sep"></span>
-<button id="exInv" class="btn">Example: Inverting Amp</button><button id="exDiv" class="btn">Example: Divider + KCL</button><button id="undo" class="btn ghost" title="Undo (Ctrl+Z)">↶ Undo</button><button id="clr" class="btn ghost" title="Remove all parts (undoable)">Clear</button>
+<span class="grp"><span class="lbl">Parts</span>
+<button class="tool active" data-t="R" title="Resistor (R)">Resistor</button><button class="tool" data-t="V" title="DC voltage source: + at the end point (V)">DC Voltage</button><button class="tool" data-t="I" title="DC current source: arrow from start to end point (I)">DC Current</button><button class="tool" data-t="W" title="Wire (W): also joins any part ends lying on it">Wire</button><button class="tool" data-t="G" title="Ground / 0 V reference (G)">Ground</button><button class="tool" data-t="O" title="Op-amp, single click; − input top, + bottom. Clips at its supply rails (default ±15 V; click the rails label to change) (O)">Op-Amp</button></span><span class="sep"></span><span class="grp"><span class="lbl">Edit</span><button class="tool" data-t="T" title="Rotate: click a part to turn it 90° clockwise (T). Shortcut: hover any part and press R">⟳ Rotate</button><button class="tool" data-t="F" title="Flip: click a part to mirror it horizontally, Shift+click vertically (F). Shortcut: hover a part and press F / Shift+F">⇋ Flip</button><button class="tool" data-t="M" title="Move: drag a part to a new spot (M)">Move</button><button class="tool" data-t="X" title="Delete tool: click a part (X / Del). Right-click any part also deletes">Delete</button>
+<button id="undo" class="btn ghost" title="Undo (Ctrl+Z)">↶ Undo</button><button id="clr" class="btn ghost" title="Remove all parts (undoable)">Clear</button>
+</span><span class="sep"></span><span class="grp"><span class="lbl">Examples</span><button id="exInv" class="btn">Inverting Amp</button><button id="exDiv" class="btn">Divider + Current Source</button></span>
 </div>
-<div class="split"><div class="card canvas-wrap"><svg id="svg" width="100%" height="520"></svg>
-<p class="hint"><b>How to use:</b> pick a part, click a start grid dot then an end dot (V source: + goes at the end; I source arrow points to the end). Ground &amp; op-amp: single click. Click a value label to edit it (4.7k, 2m OK). Wires connect at their ends and to any part end lying on them. Drag with <b>Move</b>, delete with right-click or <b>Delete</b>. Keys: R V I W G O M X, T rotate tool, F flip tool; hover a part and press R to rotate 90°, F / Shift+F to flip. Click an op-amp’s rails label to set +V/−V (default ±15 V); a saturated op-amp turns red. Esc cancels, Ctrl+Z undoes. Solves automatically.</p></div>
+<div id="intro" class="intro"><div><b>Try it:</b> an inverting amplifier is loaded. Click the <span class="kw">2 V</span> label and enter <span class="kw">5</span> to watch the op-amp clip at its rail, or pick <b>Resistor</b> and click two grid dots to add a part. Results update instantly.</div><button id="introX" class="x" title="Dismiss" aria-label="Dismiss">✕</button></div>
+<div class="split"><div class="card canvas-wrap"><svg id="svg" width="100%" height="440"></svg>
+<p class="hint">Click a start dot, then an end dot to place two-terminal parts (V source: + at the end; I source arrow points to the end). Ground and op-amp take a single click. Wires join any part end lying on them. Click a value or the op-amp's rails label to edit it (SI suffixes OK: 4.7k, 2m).</p><p class="hint mobile-only">Swipe sideways to see the full canvas.</p></div>
 <div class="card side"><h3>Nodal Solution (MNA)</h3><div id="solOut" class="mono"></div>
+<h3>Keyboard Shortcuts</h3><table class="keys"><tbody>
+<tr><td><kbd>R</kbd> <kbd>V</kbd> <kbd>I</kbd> <kbd>W</kbd> <kbd>G</kbd> <kbd>O</kbd></td><td>Pick resistor, voltage, current, wire, ground, op-amp</td></tr>
+<tr><td>hover + <kbd>R</kbd></td><td>Rotate part 90°</td></tr>
+<tr><td>hover + <kbd>F</kbd></td><td>Flip horizontally</td></tr>
+<tr><td>hover + <kbd>Shift</kbd>+<kbd>F</kbd></td><td>Flip vertically</td></tr>
+<tr><td><kbd>T</kbd> / <kbd>F</kbd></td><td>Rotate / flip tool (click a part)</td></tr>
+<tr><td><kbd>M</kbd> / <kbd>X</kbd></td><td>Move (drag) / delete tool</td></tr>
+<tr><td>right-click</td><td>Delete a part</td></tr>
+<tr><td><kbd>Ctrl</kbd>+<kbd>Z</kbd></td><td>Undo</td></tr>
+<tr><td><kbd>Esc</kbd></td><td>Cancel placement</td></tr></tbody></table>
 <h3>KCL Recipe</h3><ol class="small"><li>Pick ground (0 V), label node voltages.</li><li>Each branch: i = (V<sub>start</sub> − V<sub>end</sub>)/R.</li><li>At each node: Σ i<sub>leaving</sub> = 0.</li><li>Ideal op-amp: V<sub>+</sub> = V<sub>−</sub>, no input current.</li></ol></div></div>
 </section>
 <!-- ARDUINO -->
@@ -33,7 +51,7 @@
 <div class="split"><div class="card"><h3>Pinout Planner</h3>
 <div class="row"><label>Board <select id="board"><option value="uno">Arduino Uno (ATmega328P)</option><option value="esp32">ESP32 DevKit V1</option></select></label></div>
 <div class="row"><label>Device <select id="dev"></select></label><label>Pin <select id="pin"></select></label><button id="addPin" class="btn">Assign</button></div>
-<table class="tbl" id="pinTbl"><thead><tr><th>Device</th><th>Pin</th><th>Capabilities</th><th></th></tr></thead><tbody></tbody></table>
+<div class="tblwrap"><table class="tbl" id="pinTbl"><thead><tr><th>Device</th><th>Pin</th><th>Capabilities</th><th></th></tr></thead><tbody></tbody></table></div>
 <div id="pinWarn" class="warn"></div>
 <h3>PID Motor Position Loop</h3>
 <div class="row sliders"><label>Kp <input type="range" id="kp" min="0" max="20" step="0.1" value="4"><b id="kpv"></b></label>
@@ -49,18 +67,18 @@
 <section id="nec" class="panel">
 <div class="split"><div class="card"><h3>Panel Schedule <span class="small">(120/240 V 1Φ, NEC 220 style)</span></h3>
 <div class="row"><label>Main (A) <input id="mainA" type="number" value="200" style="width:80px"></label><button id="addCkt" class="btn">+ Circuit</button><button id="exPanel" class="btn ghost">Load Example House</button></div>
-<table class="tbl" id="cktTbl"><thead><tr><th>#</th><th>Load</th><th>VA</th><th>Poles</th><th>Type</th><th>Breaker</th><th>Wire (Cu)</th><th>Phase</th><th></th></tr></thead><tbody></tbody></table>
+<div class="tblwrap"><table class="tbl" id="cktTbl"><thead><tr><th>#</th><th>Load</th><th>VA</th><th>Poles</th><th>Type</th><th>Breaker</th><th>Wire (Cu)</th><th>Phase</th><th></th></tr></thead><tbody></tbody></table></div>
 <div id="panelSum" class="mono"></div></div>
 <div class="card side"><h3>Conduit Fill (Ch. 9, Table 1/4/5)</h3>
 <div class="row"><label>Conduit <select id="cType"><option>EMT</option><option>PVC-40</option></select></label><label>Size <select id="cSize"></select></label></div>
 <div class="row"><label>Wire <select id="wSize"></select></label><label>Qty <input id="wQty" type="number" value="3" style="width:60px"></label><button id="addW" class="btn">Add THHN</button></div>
-<table class="tbl" id="wTbl"><thead><tr><th>THHN</th><th>Qty</th><th>Area in²</th><th></th></tr></thead><tbody></tbody></table>
+<div class="tblwrap"><table class="tbl" id="wTbl"><thead><tr><th>THHN</th><th>Qty</th><th>Area in²</th><th></th></tr></thead><tbody></tbody></table></div>
 <div class="bar"><div id="fillBar"></div></div><div id="fillOut" class="mono"></div>
 <p class="small">Limits: 1 wire 53%, 2 wires 31%, 3+ wires 40%. Educational tool; verify against the adopted NEC edition &amp; AHJ.</p></div></div>
 </section>
 <!-- CAD -->
 <section id="cad" class="panel">
-<div class="split"><div class="card canvas-wrap"><div id="three" style="height:540px"></div></div>
+<div class="split"><div class="card canvas-wrap"><div id="three"></div></div>
 <div class="card side"><h3>Model</h3><div class="row"><select id="model"><option value="rover">2WD Rover (Arduino)</option><option value="arm">3-DOF Robot Arm</option><option value="box">Control Enclosure</option></select></div>
 <div id="armCtl" class="sliders"><label>Base <input type="range" id="j0" min="-180" max="180" value="20"></label><label>Shoulder <input type="range" id="j1" min="-80" max="80" value="25"></label><label>Elbow <input type="range" id="j2" min="-120" max="120" value="-45"></label></div>
 <label class="small"><input type="checkbox" id="spin" checked> Animate</label> <label class="small"><input type="checkbox" id="wire"> Wireframe</label>
